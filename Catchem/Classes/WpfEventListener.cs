@@ -50,6 +50,11 @@ namespace Catchem.Classes
             Logger.Write("Level up! Rewards: " + evt.Items, session: session);
         }
 
+        public void HandleEvent(TelegramMessageEvent evt, ISession session)
+        {
+           Logger.Write(evt.Message, LogLevel.Telegram, session: session);
+        }
+
         public void HandleEvent(WarnEvent evt, ISession session)
         {
             Logger.Write(evt.ToString(), LogLevel.Warning, session: session);
@@ -87,7 +92,7 @@ namespace Catchem.Classes
         {
             Logger.Write($"Evolved into {evt.Id} CP: {evt.Cp} Iv: {evt.Perfection.ToString("0.00")}%", session: session);
 
-            Logger.PushToUi("pm_new", session, evt.Uid, evt.Id, evt.Cp, evt.Perfection, evt.Family, evt.Candy);
+            Logger.PushToUi("pm_new", session, evt.Uid, evt.Id, evt.Cp, evt.Perfection, evt.Family, evt.Candy, evt.Level, evt.Move1, evt.Move2, evt.Type1, evt.Type2, evt.MaxCp, evt.Stamina, evt.MaxStamina);
         }
         
         public void HandleEvent(PokemonStatsChangedEvent evt, ISession session)
@@ -192,7 +197,7 @@ namespace Catchem.Classes
             Logger.Write(session.Translation.GetTranslation(TranslationString.IncubatorEggHatched,
                 session.Translation.GetPokemonName(evt.PokemonId), evt.Level, evt.Cp, evt.MaxCp, evt.Perfection),
                 LogLevel.Egg, session: session);
-            Logger.PushToUi("pm_new", session, evt.Id, evt.PokemonId, evt.Cp, evt.Perfection, evt.Family, evt.Candy);
+            Logger.PushToUi("pm_new", session, evt.Id, evt.PokemonId, evt.Cp, evt.Perfection, evt.Family, evt.Candy, evt.Level, evt.Move1, evt.Move2, evt.Type1, evt.Type2, evt.MaxCp, evt.Stamina, evt.MaxStamina);
         }
 
         public void HandleEvent(FortUsedEvent evt, ISession session)
@@ -262,7 +267,7 @@ namespace Catchem.Classes
                 case CatchPokemonResponse.Types.CatchStatus.CatchSuccess:
                     strStatus = session.Translation.GetTranslation(TranslationString.CatchStatusSuccess);
                     caughtEscapeFlee = LogLevel.Caught;
-                    Logger.PushToUi("pm_new", session, evt.Uid, evt.Id, evt.Cp, evt.Perfection, evt.Family, evt.FamilyCandies);
+                    Logger.PushToUi("pm_new", session, evt.Uid, evt.Id, evt.Cp, evt.Perfection, evt.Family, evt.FamilyCandies, evt.Level, evt.Move1, evt.Move2, evt.Type1, evt.Type2, evt.MaxCp, evt.Stamina, evt.MaxStamina);
                     break;
                 default:
                     strStatus = evt.Status.ToString();
@@ -413,7 +418,7 @@ namespace Catchem.Classes
         {
 
         }
-
+      
         public void Listen(IEvent evt, ISession session)
         {
             try

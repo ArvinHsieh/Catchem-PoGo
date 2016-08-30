@@ -1,5 +1,6 @@
 ﻿#region using directives
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,8 +8,6 @@ using PoGo.PokeMobBot.Logic.Event;
 using PoGo.PokeMobBot.Logic.PoGoUtils;
 using PoGo.PokeMobBot.Logic.State;
 using PoGo.PokeMobBot.Logic.Utils;
-using PoGo.PokeMobBot.Logic.Logging;
-using PoGo.PokeMobBot.Logic.Common;
 
 #endregion
 
@@ -16,8 +15,12 @@ namespace PoGo.PokeMobBot.Logic.Tasks
 {
     public class EvolveSpecificPokemonTask
     {
-        public static async Task Execute(ISession session, ulong pokemonId)
+        public static async Task Execute(ISession session, ulong pokemonId, CancellationToken cancellationToken)
         {
+            if (!await CheckBotStateTask.Execute(session, cancellationToken)) return;
+
+            var prevState = session.State;
+            session.State = BotState.Evolve;
             var all = await session.Inventory.GetPokemons();
             var pokemons = all.OrderByDescending(x => x.Cp).ThenBy(n => n.StaminaMax);
             var pokemon = pokemons.FirstOrDefault(p => p.Id == pokemonId);
@@ -56,10 +59,20 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                     Cp = evolveResponse.EvolvedPokemonData.Cp,
                     Perfection = evolveResponse.EvolvedPokemonData.CalculatePokemonPerfection(),
                     Family = family.FamilyId,
-                    Candy = family.Candy_
+                    Level = PokemonInfo.GetLevel(evolveResponse.EvolvedPokemonData),
+                    Candy = family.Candy_,
+                    Type1 = setting.Type,
+                    Type2 = setting.Type2,
+                    Stats = setting.Stats,
+                    MaxCp = (int)PokemonInfo.GetMaxCpAtTrainerLevel(pokemon, session.Runtime.CurrentLevel),
+                    Stamina = pokemon.Stamina,
+                    MaxStamina = pokemon.StaminaMax,
+                    Move1 = evolveResponse.EvolvedPokemonData.Move1,
+                    Move2 = evolveResponse.EvolvedPokemonData.Move2
                 });
             }
-            await DelayingUtils.Delay(session.LogicSettings.DelayBetweenPlayerActions, 2000);
+            await DelayingUtils.Delay(session.LogicSettings.DelayEvolvePokemon, 25000);
+            session.State = prevState;
         }
     }
 }

@@ -21,16 +21,25 @@ namespace PoGo.PokeMobBot.Logic.Tasks
         public static async Task  Execute(ISession session, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-                // Refresh inventory so that the player stats are fresh
-            await session.Inventory.RefreshCachedInventory();
 
+            //Refresh inventory so that the player stats are fresh
+            //await session.Inventory.RefreshCachedInventory(); too much inventory refresh
+
+            if (!session.LogicSettings.CatchWildPokemon) return;
             session.EventDispatcher.Send(new DebugEvent()
             {
                 Message = session.Translation.GetTranslation(TranslationString.LookingForPokemon)
             });
 
             var pokemons = await GetNearbyPokemons(session);
-            session.EventDispatcher.Send(new PokemonsFoundEvent {Pokemons = pokemons.Select(x => x.BaseMapPokemon)});
+
+            if (session.LogicSettings.UsePokemonToNotCatchFilter)
+            {
+                pokemons = pokemons.Where(x => !session.LogicSettings.PokemonsNotToCatch.Contains(x.PokemonId)).ToList();
+            }
+
+            session.EventDispatcher.Send(new PokemonsFoundEvent { Pokemons = pokemons.Select(x => x.BaseMapPokemon) });
+            
             foreach (var pokemon in pokemons)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -52,12 +61,14 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 if (session.LogicSettings.UsePokemonToNotCatchFilter &&
                     session.LogicSettings.PokemonsNotToCatch.Contains(pokemon.PokemonId))
                 {
-                    session.EventDispatcher.Send(new NoticeEvent()
-                    {
-                        Message =
-                            session.Translation.GetTranslation(TranslationString.PokemonSkipped,
-                                session.Translation.GetPokemonName(pokemon.PokemonId))
-                    });
+                    if (!pokemon.Caught)
+                        session.EventDispatcher.Send(new NoticeEvent()
+                        {
+                            Message =
+                                session.Translation.GetTranslation(TranslationString.PokemonSkipped,
+                                    session.Translation.GetPokemonName(pokemon.PokemonId))
+                        });
+                    pokemon.Caught = true;
                     continue;
                 }
 
@@ -73,7 +84,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                     switch (encounter.Status)
                     {
                         case EncounterResponse.Types.Status.EncounterSuccess:
-                            await CatchPokemonTask.Execute(session, encounter, pokemon);
+                            await CatchPokemonTask.Execute(session, encounter, pokemon, cancellationToken);
                             break;
                         case EncounterResponse.Types.Status.PokemonInventoryFull:
                             if (session.LogicSettings.TransferDuplicatePokemon)
@@ -113,7 +124,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 session.EventDispatcher.Send(new PokemonDisappearEvent {Pokemon = pokemon.BaseMapPokemon});
 
                 // always wait the delay amount between catches, ideally to prevent you from making another call too early after a catch event
-                await Task.Delay(session.LogicSettings.DelayBetweenPokemonCatch);
+                await Task.Delay(session.LogicSettings.DelayBetweenPokemonCatch, cancellationToken);
             }
             return;
         }

@@ -29,26 +29,34 @@ namespace PoGo.PokeMobBot.Logic.Tasks
 
             while (pokestopList.Any())
             {
-                
                 cancellationToken.ThrowIfCancellationRequested();
-
+                
                 pokestopList =
                     pokestopList.OrderBy(
                         i =>
                             LocationUtils.CalculateDistanceInMeters(session.Client.CurrentLatitude,
                                 session.Client.CurrentLongitude, i.Latitude, i.Longitude)).ToList();
                 var pokeStop = pokestopList[0];
-                pokestopList.RemoveAt(0);
-                if (pokeStop.Used)
-                    break;
-                var fortInfo = await session.Client.Fort.GetFort(pokeStop.Id, pokeStop.Latitude, pokeStop.Longitude);
 
+                pokestopList.RemoveAt(0);
+                
+                if (pokeStop.Used)
+                    continue;
+
+                if (!session.LogicSettings.LootPokestops)
+                {
+                    session.MapCache.UsedPokestop(pokeStop, session);
+                    continue;
+                }
+                var fortInfo = await session.Client.Fort.GetFort(pokeStop.Id, pokeStop.Latitude, pokeStop.Longitude);
+                await DelayingUtils.Delay(session.LogicSettings.DelayBetweenPlayerActions, 2000);
                 var fortSearch =
                     await session.Client.Fort.SearchFort(pokeStop.Id, pokeStop.Latitude, pokeStop.Longitude);
-
+                await DelayingUtils.Delay(session.LogicSettings.DelayPokestop, 5000);
                 if (fortSearch.ExperienceAwarded > 0)
                 {
-                    RuntimeSettings.StopsHit++;
+                    session.Runtime.StopsHit++;
+                    session.Runtime.PokestopsToCheckGym--;
                     session.EventDispatcher.Send(new FortUsedEvent
                     {
                         Id = pokeStop.Id,
@@ -59,7 +67,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                         Latitude = pokeStop.Latitude,
                         Longitude = pokeStop.Longitude
                     });
-                    session.MapCache.UsedPokestop(pokeStop);
+                    session.MapCache.UsedPokestop(pokeStop, session);
                     session.EventDispatcher.Send(new InventoryNewItemsEvent()
                     {
                         Items = fortSearch.ItemsAwarded.ToItemList()
@@ -69,14 +77,6 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 {//because we're all fucking idiots for not catching this sooner
                     await CatchLurePokemonsTask.Execute(session, pokeStop.BaseFortData, cancellationToken);
                 }
-
-
-                //await RecycleItemsTask.Execute(session, cancellationToken);
-
-                //if (session.LogicSettings.TransferDuplicatePokemon)
-                //{
-                //    await TransferDuplicatePokemonTask.Execute(session, cancellationToken);
-                //}
             }
         }
 

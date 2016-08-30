@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Newtonsoft.Json;
 using PoGo.PokeMobBot.Logic;
 using POGOProtos.Enums;
 using POGOProtos.Inventory.Item;
@@ -19,15 +15,29 @@ namespace Catchem.Extensions
     {
         public static GlobalSettings Clone(this GlobalSettings gs)
         {
-            var newSettings = new GlobalSettings();
-            gs.CloneProperties(newSettings);
-            gs.CloneFields(newSettings);
-            return newSettings;
+            return gs.CloneJson();
+        }
+
+        public static T CloneJson<T>(this T source)
+        {
+            // Don't serialize a null object, simply return the default for that object
+            if (ReferenceEquals(source, null))
+            {
+                return default(T);
+            }
+
+            // initialize inner objects individually
+            // for example in default constructor some list property initialized with some values,
+            // but in 'source' these items are cleaned -
+            // without ObjectCreationHandling.Replace default constructor values will be added to result
+            var deserializeSettings = new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
+
+            return JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(source), deserializeSettings);
         }
 
         public static void CloneProperties<T>(this T from, T to)
         {
-            var objType = typeof(T);
+            var objType = from.GetType();
             foreach (var property in objType.GetProperties())
             {
                 if (property.PropertyType == objType) continue;
@@ -37,14 +47,18 @@ namespace Catchem.Extensions
                     var nextObjTo = property.GetValue(to);
                     CloneProperties(nextObjFrom, nextObjTo);
                     CloneFields(nextObjFrom, nextObjTo);
+                    continue;
                 }
-                var value = property.GetValue(from);
-                property.SetValue(to, value);
+                if (property.SetMethod != null)
+                {
+                    var value = property.GetValue(from);
+                    property.SetValue(to, value);
+                }
             }
         }
         public static void CloneFields<T>(this T from, T to)
         {
-            var objType = typeof(T);
+            var objType = from.GetType();
             foreach (var property in objType.GetFields())
             {
                 if (property.FieldType == objType) continue;
@@ -52,260 +66,23 @@ namespace Catchem.Extensions
                 {
                     var nextObjFrom = property.GetValue(from);
                     var nextObjTo = property.GetValue(to);
-                    CloneProperties(nextObjFrom, nextObjTo);
-                    CloneFields(nextObjFrom, nextObjTo);
+                    nextObjFrom.CloneProperties(nextObjTo);
+                    nextObjFrom.CloneFields(nextObjTo);
+                    continue;
                 }
                 var value = property.GetValue(from);
                 property.SetValue(to, value);
             }
         }
 
-        public static List<T> GetLogicalChildCollection<T>(this UIElement parent) where T : DependencyObject
-        {
-            var logicalCollection = new List<T>();
-            GetLogicalChildCollection(parent, logicalCollection);
-            return logicalCollection;
-        }
 
-        private static void GetLogicalChildCollection<T>(DependencyObject parent, List<T> logicalCollection) where T : DependencyObject
-        {
-            IEnumerable children = LogicalTreeHelper.GetChildren(parent);
-            foreach (object child in children)
-            {
-                if (child is DependencyObject)
-                {
-                    DependencyObject depChild = child as DependencyObject;
-                    if (child is T)
-                    {
-                        logicalCollection.Add(child as T);
-                    }
-                    GetLogicalChildCollection(depChild, logicalCollection);
-                }
-            }
-        }
-
-        public static bool GetValueByName<T>(string propertyName, object obj, out T val)
-        {
-            return GetPropertyRecursive(propertyName, obj, out val) || GetFieldRecursive(propertyName, obj, out val);
-        }
-
-        private static bool GetPropertyRecursive<T>(string propertyName, object obj, out T value)
-        {
-            var objType = obj.GetType();
-            foreach (var property in objType.GetProperties())
-            {
-                if (property.PropertyType == objType) continue;
-                if (property.PropertyType.IsMyInterface() && property.PropertyType.IsClass)
-                {
-                    var nextObj = property.GetValue(obj);
-                    if (GetPropertyRecursive(propertyName, nextObj, out value))
-                        return true;
-                    if (GetFieldRecursive(propertyName, nextObj, out value))
-                        return true;
-                }
-                if (property.Name != propertyName) continue;
-                value = (T)Convert.ChangeType(property.GetValue(obj), typeof(T));
-                return true;
-            }
-            value = default(T);
-            return false;
-        }
-
-        private static bool IsMyInterface(this Type propertyType)
+        internal static bool IsMyInterface(this Type propertyType)
         {
             return propertyType.Assembly.GetName().Name != "mscorlib";
         }
-
-        private static bool GetFieldRecursive<T>(string propertyName, object obj, out T value)
-        {
-            var objType = obj.GetType();
-            foreach (var property in objType.GetFields())
-            {
-                if (property.FieldType == objType) continue;
-                if (property.FieldType.IsMyInterface() && property.FieldType.IsClass)
-                {
-                    var nextObj = property.GetValue(obj);
-                    if (GetFieldRecursive(propertyName, nextObj, out value))
-                        return true;
-                    if (GetPropertyRecursive(propertyName, nextObj, out value))
-                        return true;
-                }
-                if (property.Name != propertyName) continue;
-                value = (T)Convert.ChangeType(property.GetValue(obj), typeof(T));
-                return true;
-            }
-            value = default(T);
-            return false;
-        }
-
-        public static void SetValueByName(string propertyName, object value, object obj)
-        {
-            if (!SetPropertyRecursive(propertyName, value, obj))
-                SetFieldRecursive(propertyName, value, obj);
-        }
-
-        private static bool SetPropertyRecursive(string propertyName, object value, object obj)
-        {
-            var objType = obj.GetType();
-            foreach (var property in objType.GetProperties())
-            {
-                if (property.PropertyType == objType) continue;
-                if (property.PropertyType.IsClass && property.PropertyType.IsMyInterface())
-                {
-                    var nextObj = property.GetValue(obj);
-                    if (SetPropertyRecursive(propertyName, value, nextObj))
-                        return true;
-                    if (SetFieldRecursive(propertyName, value, nextObj))
-                        return true;
-                }
-                if (property.Name != propertyName) continue;
-                if (property.PropertyType == typeof(int))
-                {
-                    int val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else if (property.PropertyType == typeof(double))
-                {
-                    double val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else if (property.PropertyType == typeof(float))
-                {
-                    float val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else
-                    property.SetValue(obj, value);
-                return true;
-            }
-            return false;
-        }
-
-        private static bool SetFieldRecursive(string propertyName, object value, object obj)
-        {
-            var objType = obj.GetType();
-            foreach (var property in objType.GetFields())
-            {
-                if (property.FieldType == objType) continue;
-                if (property.FieldType.IsClass && property.FieldType.IsMyInterface())
-                {
-                    var nextObj = property.GetValue(obj);
-                    if (SetFieldRecursive(propertyName, value, nextObj))
-                        return true;
-                    if (SetPropertyRecursive(propertyName, value, nextObj))
-                        return true;
-                }
-                if (property.Name != propertyName) continue;
-                if (property.FieldType == typeof(int))
-                {
-                    int val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else if (property.FieldType == typeof(double))
-                {
-                    double val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else if (property.FieldType == typeof(float))
-                {
-                    float val;
-                    if (((string)value).GetVal(out val))
-                        property.SetValue(obj, val);
-                }
-                else
-                    property.SetValue(obj, value);
-                return true;
-            }
-            return false;
-        }
-
-        public static bool GetVal<T>(this string value, out T resultVal) where T : IConvertible
-        {
-            resultVal = default(T);
-            if (resultVal == null) return false;
-            var typeCode = resultVal.GetTypeCode();
-            switch (typeCode)
-            {
-                case TypeCode.Double:
-                    {
-                        double result;
-                        var nfi = NumberFormatInfo.CurrentInfo;
-                        var currentDecimalSeparator = nfi.CurrencyDecimalSeparator;
-                        value = Conversion(value, currentDecimalSeparator);
-                        var res = double.TryParse(value, out result);
-                        if (!res) return false;
-                        var changeType = Convert.ChangeType(result, typeCode);
-                        if (changeType != null)
-                            resultVal = (T)changeType;
-                        return true;
-                    }
-                case TypeCode.Single:
-                    {
-                        float result;
-                        //var res = float.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out result)
-                        //          || float.TryParse(value, NumberStyles.Any, CultureInfo.GetCultureInfo("en-US"), out result)
-                        //          || float.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
-                        var nfi = NumberFormatInfo.CurrentInfo;
-                        var currentDecimalSeparator = nfi.CurrencyDecimalSeparator;
-                        value = Conversion(value, currentDecimalSeparator);
-                        var res = float.TryParse(value, out result);
-                        if (!res) return false;
-                        var changeType = Convert.ChangeType(result, typeCode);
-                        if (changeType != null)
-                            resultVal = (T)changeType;
-                        return true;
-                    }
-                case TypeCode.Int32:
-                    {
-                        int result;
-                        var res = int.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out result)
-                                  || int.TryParse(value, NumberStyles.Any, CultureInfo.GetCultureInfo("en-US"), out result)
-                                  || int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
-                        if (!res) return false;
-                        var changeType = Convert.ChangeType(result, typeCode);
-                        if (changeType != null)
-                            resultVal = (T)changeType;
-                        return true;
-                    }
-            }
-            return false;
-        }
-
-        private static string Conversion(string str1, string str2)
-        {
-
-            if (str1.Contains(".") && (str2 != "."))
-                return str1.Replace('.', ',');
-            if (str1.Contains(",") && (str2 != ","))
-                return str1.Replace(',', '.');
-            return str1;
-        }
-
-        public static void AppendText(this RichTextBox box, string text, System.Windows.Media.Color color)
-        {
-            var tr = new TextRange(box.Document.ContentEnd, box.Document.ContentEnd) {Text = text};
-            try
-            {
-                tr.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(color));
-            }
-            catch (FormatException) { }
-        }
-
-        public static void AppendParagraph(this RichTextBox box, string text, System.Windows.Media.Color color)
-        {
-            var paragraph = new Paragraph();
-            paragraph.Inlines.Add(text);
-            paragraph.Foreground = new SolidColorBrush(color);
-            box.Document.Blocks.Add(paragraph);
-
-            box.ScrollToEnd();
-        }
-
+       
+        
+        
         public static System.Windows.Controls.Image ToImage(this PokemonId pid)
         {
             var img = new System.Windows.Controls.Image {Source = pid.ToBitmap().LoadBitmap()};
@@ -331,7 +108,10 @@ namespace Catchem.Extensions
         {
             return pid.ToInventoryBitmap().LoadBitmap();
         }
-
+        public static BitmapSource ToInventorySource(this PokemonType pid)
+        {
+            return pid.ToInventoryBitmap().LoadBitmap();
+        }
         public static BitmapSource ToInventorySource(this ItemId pid)
         {
             return pid.ToInventoryItem().LoadBitmap();
@@ -366,6 +146,52 @@ namespace Catchem.Extensions
             return bs;
         }
 
+        public static Bitmap ToInventoryBitmap(this PokemonType pid)
+        {
+            switch (pid)
+            {
+                case PokemonType.None:
+                    return Properties.Resources.no_name;
+                case PokemonType.Normal:
+                    return Properties.Resources.Normal_inv;
+                case PokemonType.Fighting:
+                    return Properties.Resources.Fighting_inv;
+                case PokemonType.Flying:
+                    return Properties.Resources.Flying_inv;
+                case PokemonType.Poison:
+                    return Properties.Resources.Poison_inv;
+                case PokemonType.Ground:
+                    return Properties.Resources.Ground_inv;
+                case PokemonType.Rock:
+                    return Properties.Resources.Rock_inv;
+                case PokemonType.Bug:
+                    return Properties.Resources.Bug_inv;
+                case PokemonType.Ghost:
+                    return Properties.Resources.Ghost_inv;
+                case PokemonType.Steel:
+                    return Properties.Resources.Steel_inv;
+                case PokemonType.Fire:
+                    return Properties.Resources.Fire_inv;
+                case PokemonType.Water:
+                    return Properties.Resources.Water_inv;
+                case PokemonType.Grass:
+                    return Properties.Resources.Grass_inv;
+                case PokemonType.Electric:
+                    return Properties.Resources.Electric_inv;
+                case PokemonType.Psychic:
+                    return Properties.Resources.Psychic_inv;
+                case PokemonType.Ice:
+                    return Properties.Resources.Ice_inv;
+                case PokemonType.Dragon:
+                    return Properties.Resources.Dragon_inv;
+                case PokemonType.Dark:
+                    return Properties.Resources.Dark_inv;
+                case PokemonType.Fairy:
+                    return Properties.Resources.Fairy_inv;
+            }
+            return Properties.Resources.no_name;
+        }
+
         public static Bitmap ToBitmap(this PokemonId pid)
         {
             switch (pid)
@@ -381,448 +207,303 @@ namespace Catchem.Extensions
                 case PokemonId.Charmander:
                     return Properties.Resources._4;
                 case PokemonId.Charmeleon:
-                    return Properties.Resources._5
-                ;
+                    return Properties.Resources._5;
                 case PokemonId.Charizard:
-                    return Properties.Resources._6
-                ;
+                    return Properties.Resources._6;
                 case PokemonId.Squirtle:
-                    return Properties.Resources._7
-                ;
+                    return Properties.Resources._7;
                 case PokemonId.Wartortle:
-                    return Properties.Resources._8
-                ;
+                    return Properties.Resources._8;
                 case PokemonId.Blastoise:
-                    return Properties.Resources._9
-                ;
+                    return Properties.Resources._9;
                 case PokemonId.Caterpie:
-                    return Properties.Resources._10
-                ;
+                    return Properties.Resources._10;
                 case PokemonId.Metapod:
-                    return Properties.Resources._11
-                ;
+                    return Properties.Resources._11;
                 case PokemonId.Butterfree:
-                    return Properties.Resources._12
-                ;
+                    return Properties.Resources._12;
                 case PokemonId.Weedle:
-                    return Properties.Resources._13
-                ;
+                    return Properties.Resources._13;
                 case PokemonId.Kakuna:
-                    return Properties.Resources._14
-                ;
+                    return Properties.Resources._14;
                 case PokemonId.Beedrill:
-                    return Properties.Resources._15
-                ;
+                    return Properties.Resources._15;
                 case PokemonId.Pidgey:
-                    return Properties.Resources._16
-                ;
+                    return Properties.Resources._16;
                 case PokemonId.Pidgeotto:
-                    return Properties.Resources._17
-                ;
+                    return Properties.Resources._17;
                 case PokemonId.Pidgeot:
-                    return Properties.Resources._18
-                ;
+                    return Properties.Resources._18;
                 case PokemonId.Rattata:
-                    return Properties.Resources._19
-                ;
+                    return Properties.Resources._19;
                 case PokemonId.Raticate:
-                    return Properties.Resources._20
-                ;
+                    return Properties.Resources._20;
                 case PokemonId.Spearow:
-                    return Properties.Resources._21
-                ;
+                    return Properties.Resources._21;
                 case PokemonId.Fearow:
-                    return Properties.Resources._22
-                ;
+                    return Properties.Resources._22;
                 case PokemonId.Ekans:
-                    return Properties.Resources._23
-                ;
+                    return Properties.Resources._23;
                 case PokemonId.Arbok:
-                    return Properties.Resources._24
-                ;
+                    return Properties.Resources._24;
                 case PokemonId.Pikachu:
-                    return Properties.Resources._25
-                ;
+                    return Properties.Resources._25;
                 case PokemonId.Raichu:
-                    return Properties.Resources._26
-                ;
+                    return Properties.Resources._26;
                 case PokemonId.Sandshrew:
-                    return Properties.Resources._27
-                ;
+                    return Properties.Resources._27;
                 case PokemonId.Sandslash:
-                    return Properties.Resources._28
-                ;
+                    return Properties.Resources._28;
                 case PokemonId.NidoranFemale:
-                    return Properties.Resources._29
-                ;
+                    return Properties.Resources._29;
                 case PokemonId.Nidorina:
-                    return Properties.Resources._30
-                ;
+                    return Properties.Resources._30;
                 case PokemonId.Nidoqueen:
-                    return Properties.Resources._31
-                ;
+                    return Properties.Resources._31;
                 case PokemonId.NidoranMale:
-                    return Properties.Resources._32
-                ;
+                    return Properties.Resources._32;
                 case PokemonId.Nidorino:
-                    return Properties.Resources._33
-                ;
+                    return Properties.Resources._33;
                 case PokemonId.Nidoking:
-                    return Properties.Resources._34
-                ;
+                    return Properties.Resources._34;
                 case PokemonId.Clefairy:
-                    return Properties.Resources._35
-                ;
+                    return Properties.Resources._35;
                 case PokemonId.Clefable:
-                    return Properties.Resources._36
-                ;
+                    return Properties.Resources._36;
                 case PokemonId.Vulpix:
-                    return Properties.Resources._37
-                ;
+                    return Properties.Resources._37;
                 case PokemonId.Ninetales:
-                    return Properties.Resources._38
-                ;
+                    return Properties.Resources._38;
                 case PokemonId.Jigglypuff:
-                    return Properties.Resources._39
-                ;
+                    return Properties.Resources._39;
                 case PokemonId.Wigglytuff:
-                    return Properties.Resources._40
-                ;
+                    return Properties.Resources._40;
                 case PokemonId.Zubat:
-                    return Properties.Resources._41
-                ;
+                    return Properties.Resources._41;
                 case PokemonId.Golbat:
-                    return Properties.Resources._42
-                ;
+                    return Properties.Resources._42;
                 case PokemonId.Oddish:
-                    return Properties.Resources._43
-                ;
+                    return Properties.Resources._43;
                 case PokemonId.Gloom:
-                    return Properties.Resources._44
-                ;
+                    return Properties.Resources._44;
                 case PokemonId.Vileplume:
-                    return Properties.Resources._45
-                ;
+                    return Properties.Resources._45;
                 case PokemonId.Paras:
-                    return Properties.Resources._46
-                ;
+                    return Properties.Resources._46;
                 case PokemonId.Parasect:
-                    return Properties.Resources._47
-                ;
+                    return Properties.Resources._47;
                 case PokemonId.Venonat:
-                    return Properties.Resources._48
-                ;
+                    return Properties.Resources._48;
                 case PokemonId.Venomoth:
-                    return Properties.Resources._49
-                ;
+                    return Properties.Resources._49;
                 case PokemonId.Diglett:
-                    return Properties.Resources._50
-                ;
+                    return Properties.Resources._50;
                 case PokemonId.Dugtrio:
-                    return Properties.Resources._51
-                ;
+                    return Properties.Resources._51;
                 case PokemonId.Meowth:
-                    return Properties.Resources._52
-                ;
+                    return Properties.Resources._52;
                 case PokemonId.Persian:
-                    return Properties.Resources._53
-                ;
+                    return Properties.Resources._53;
                 case PokemonId.Psyduck:
-                    return Properties.Resources._54
-                ;
+                    return Properties.Resources._54;
                 case PokemonId.Golduck:
-                    return Properties.Resources._55
-                ;
+                    return Properties.Resources._55;
                 case PokemonId.Mankey:
-                    return Properties.Resources._56
-                ;
+                    return Properties.Resources._56;
                 case PokemonId.Primeape:
-                    return Properties.Resources._57
-                ;
+                    return Properties.Resources._57;
                 case PokemonId.Growlithe:
-                    return Properties.Resources._58
-                ;
+                    return Properties.Resources._58;
                 case PokemonId.Arcanine:
-                    return Properties.Resources._59
-                ;
+                    return Properties.Resources._59;
                 case PokemonId.Poliwag:
-                    return Properties.Resources._60
-                ;
+                    return Properties.Resources._60;
                 case PokemonId.Poliwhirl:
-                    return Properties.Resources._61
-                ;
+                    return Properties.Resources._61;
                 case PokemonId.Poliwrath:
-                    return Properties.Resources._62
-                ;
+                    return Properties.Resources._62;
                 case PokemonId.Abra:
-                    return Properties.Resources._63
-                ;
+                    return Properties.Resources._63;
                 case PokemonId.Kadabra:
-                    return Properties.Resources._64
-                ;
+                    return Properties.Resources._64;
                 case PokemonId.Alakazam:
-                    return Properties.Resources._65
-                ;
+                    return Properties.Resources._65;
                 case PokemonId.Machop:
-                    return Properties.Resources._66
-                ;
+                    return Properties.Resources._66;
                 case PokemonId.Machoke:
-                    return Properties.Resources._67
-                ;
+                    return Properties.Resources._67;
                 case PokemonId.Machamp:
-                    return Properties.Resources._68
-                ;
+                    return Properties.Resources._68;
                 case PokemonId.Bellsprout:
-                    return Properties.Resources._69
-                ;
+                    return Properties.Resources._69;
                 case PokemonId.Weepinbell:
-                    return Properties.Resources._70
-                ;
+                    return Properties.Resources._70;
                 case PokemonId.Victreebel:
-                    return Properties.Resources._71
-                ;
+                    return Properties.Resources._71;
                 case PokemonId.Tentacool:
-                    return Properties.Resources._72
-                ;
+                    return Properties.Resources._72;
                 case PokemonId.Tentacruel:
-                    return Properties.Resources._73
-                ;
+                    return Properties.Resources._73;
                 case PokemonId.Geodude:
-                    return Properties.Resources._74
-                ;
+                    return Properties.Resources._74;
                 case PokemonId.Graveler:
-                    return Properties.Resources._75
-                ;
+                    return Properties.Resources._75;
                 case PokemonId.Golem:
-                    return Properties.Resources._76
-                ;
+                    return Properties.Resources._76;
                 case PokemonId.Ponyta:
-                    return Properties.Resources._77
-                ;
+                    return Properties.Resources._77;
                 case PokemonId.Rapidash:
-                    return Properties.Resources._78
-                ;
+                    return Properties.Resources._78;
                 case PokemonId.Slowpoke:
-                    return Properties.Resources._79
-                ;
+                    return Properties.Resources._79;
                 case PokemonId.Slowbro:
-                    return Properties.Resources._80
-                ;
+                    return Properties.Resources._80;
                 case PokemonId.Magnemite:
-                    return Properties.Resources._81
-                ;
+                    return Properties.Resources._81;
                 case PokemonId.Magneton:
-                    return Properties.Resources._82
-                ;
+                    return Properties.Resources._82;
                 case PokemonId.Farfetchd:
-                    return Properties.Resources._83
-                ;
+                    return Properties.Resources._83;
                 case PokemonId.Doduo:
-                    return Properties.Resources._84
-                ;
+                    return Properties.Resources._84;
                 case PokemonId.Dodrio:
-                    return Properties.Resources._85
-                ;
+                    return Properties.Resources._85;
                 case PokemonId.Seel:
-                    return Properties.Resources._86
-                ;
+                    return Properties.Resources._86;
                 case PokemonId.Dewgong:
-                    return Properties.Resources._87
-                ;
+                    return Properties.Resources._87;
                 case PokemonId.Grimer:
-                    return Properties.Resources._88
-                ;
+                    return Properties.Resources._88;
                 case PokemonId.Muk:
-                    return Properties.Resources._89
-                ;
+                    return Properties.Resources._89;
                 case PokemonId.Shellder:
-                    return Properties.Resources._90
-                ;
+                    return Properties.Resources._90;
                 case PokemonId.Cloyster:
-                    return Properties.Resources._91
-                ;
+                    return Properties.Resources._91;
                 case PokemonId.Gastly:
-                    return Properties.Resources._92
-                ;
+                    return Properties.Resources._92;
                 case PokemonId.Haunter:
-                    return Properties.Resources._93
-                ;
+                    return Properties.Resources._93;
                 case PokemonId.Gengar:
-                    return Properties.Resources._94
-                ;
+                    return Properties.Resources._94;
                 case PokemonId.Onix:
-                    return Properties.Resources._95
-                ;
+                    return Properties.Resources._95;
                 case PokemonId.Drowzee:
-                    return Properties.Resources._96
-                ;
+                    return Properties.Resources._96;
                 case PokemonId.Hypno:
-                    return Properties.Resources._97
-                ;
+                    return Properties.Resources._97;
                 case PokemonId.Krabby:
-                    return Properties.Resources._98
-                ;
+                    return Properties.Resources._98;
                 case PokemonId.Kingler:
-                    return Properties.Resources._99
-                ;
+                    return Properties.Resources._99;
                 case PokemonId.Voltorb:
-                    return Properties.Resources._100
-                ;
+                    return Properties.Resources._100;
                 case PokemonId.Electrode:
-                    return Properties.Resources._101
-                ;
+                    return Properties.Resources._101;
                 case PokemonId.Exeggcute:
-                    return Properties.Resources._102
-                ;
+                    return Properties.Resources._102;
                 case PokemonId.Exeggutor:
-                    return Properties.Resources._103
-                ;
+                    return Properties.Resources._103;
                 case PokemonId.Cubone:
-                    return Properties.Resources._104
-                ;
+                    return Properties.Resources._104;
                 case PokemonId.Marowak:
-                    return Properties.Resources._105
-                ;
+                    return Properties.Resources._105;
                 case PokemonId.Hitmonlee:
-                    return Properties.Resources._106
-                ;
+                    return Properties.Resources._106;
                 case PokemonId.Hitmonchan:
-                    return Properties.Resources._107
-                ;
+                    return Properties.Resources._107;
                 case PokemonId.Lickitung:
-                    return Properties.Resources._108
-                ;
+                    return Properties.Resources._108;
                 case PokemonId.Koffing:
-                    return Properties.Resources._109
-                ;
+                    return Properties.Resources._109;
                 case PokemonId.Weezing:
-                    return Properties.Resources._110
-                ;
+                    return Properties.Resources._110;
                 case PokemonId.Rhyhorn:
-                    return Properties.Resources._111
-                ;
+                    return Properties.Resources._111;
                 case PokemonId.Rhydon:
-                    return Properties.Resources._112
-                ;
+                    return Properties.Resources._112;
                 case PokemonId.Chansey:
-                    return Properties.Resources._113
-                ;
+                    return Properties.Resources._113;
                 case PokemonId.Tangela:
-                    return Properties.Resources._114
-                ;
+                    return Properties.Resources._114;
                 case PokemonId.Kangaskhan:
-                    return Properties.Resources._115
-                ;
+                    return Properties.Resources._115;
                 case PokemonId.Horsea:
-                    return Properties.Resources._116
-                ;
+                    return Properties.Resources._116;
                 case PokemonId.Seadra:
-                    return Properties.Resources._117
-                ;
+                    return Properties.Resources._117;
                 case PokemonId.Goldeen:
-                    return Properties.Resources._118
-                ;
+                    return Properties.Resources._118;
                 case PokemonId.Seaking:
-                    return Properties.Resources._119
-                ;
+                    return Properties.Resources._119;
                 case PokemonId.Staryu:
-                    return Properties.Resources._120
-                ;
+                    return Properties.Resources._120;
                 case PokemonId.Starmie:
-                    return Properties.Resources._121
-                ;
+                    return Properties.Resources._121;
                 case PokemonId.MrMime:
-                    return Properties.Resources._122
-                ;
+                    return Properties.Resources._122;
                 case PokemonId.Scyther:
-                    return Properties.Resources._123
-                ;
+                    return Properties.Resources._123;
                 case PokemonId.Jynx:
-                    return Properties.Resources._124
-                ;
+                    return Properties.Resources._124;
                 case PokemonId.Electabuzz:
-                    return Properties.Resources._125
-                ;
+                    return Properties.Resources._125;
                 case PokemonId.Magmar:
-                    return Properties.Resources._126
-                ;
+                    return Properties.Resources._126;
                 case PokemonId.Pinsir:
-                    return Properties.Resources._127
-                ;
+                    return Properties.Resources._127;
                 case PokemonId.Tauros:
-                    return Properties.Resources._128
-                ;
+                    return Properties.Resources._128;
                 case PokemonId.Magikarp:
-                    return Properties.Resources._129
-                ;
+                    return Properties.Resources._129;
                 case PokemonId.Gyarados:
-                    return Properties.Resources._130
-                ;
+                    return Properties.Resources._130;
                 case PokemonId.Lapras:
-                    return Properties.Resources._131
-                ;
+                    return Properties.Resources._131;
                 case PokemonId.Ditto:
-                    return Properties.Resources._132
-                ;
+                    return Properties.Resources._132;
                 case PokemonId.Eevee:
-                    return Properties.Resources._133
-                ;
+                    return Properties.Resources._133;
                 case PokemonId.Vaporeon:
-                    return Properties.Resources._134
-                ;
+                    return Properties.Resources._134;
                 case PokemonId.Jolteon:
-                    return Properties.Resources._135
-                ;
+                    return Properties.Resources._135;
                 case PokemonId.Flareon:
-                    return Properties.Resources._136
-                ;
+                    return Properties.Resources._136;
                 case PokemonId.Porygon:
-                    return Properties.Resources._137
-                ;
+                    return Properties.Resources._137;
                 case PokemonId.Omanyte:
-                    return Properties.Resources._138
-                ;
+                    return Properties.Resources._138;
                 case PokemonId.Omastar:
-                    return Properties.Resources._139
-                ;
+                    return Properties.Resources._139;
                 case PokemonId.Kabuto:
-                    return Properties.Resources._140
-                ;
+                    return Properties.Resources._140;
                 case PokemonId.Kabutops:
-                    return Properties.Resources._141
-                ;
+                    return Properties.Resources._141;
                 case PokemonId.Aerodactyl:
-                    return Properties.Resources._142
-                ;
+                    return Properties.Resources._142;
                 case PokemonId.Snorlax:
-                    return Properties.Resources._143
-                ;
+                    return Properties.Resources._143;
                 case PokemonId.Articuno:
-                    return Properties.Resources._144
-                ;
+                    return Properties.Resources._144;
                 case PokemonId.Zapdos:
-                    return Properties.Resources._145
-                ;
+                    return Properties.Resources._145;
                 case PokemonId.Moltres:
-                    return Properties.Resources._146
-                ;
+                    return Properties.Resources._146;
                 case PokemonId.Dratini:
-                    return Properties.Resources._147
-                ;
+                    return Properties.Resources._147;
                 case PokemonId.Dragonair:
-                    return Properties.Resources._148
-                ;
+                    return Properties.Resources._148;
                 case PokemonId.Dragonite:
-                    return Properties.Resources._149
-                ;
+                    return Properties.Resources._149;
                 case PokemonId.Mewtwo:
-                    return Properties.Resources._150
-                ;
+                    return Properties.Resources._150;
                 case PokemonId.Mew:
                     return Properties.Resources._151;
             }
             return Properties.Resources.no_name;
         }
+
         public static Bitmap ToInventoryBitmap(this PokemonId pid)
         {
             switch (pid)
@@ -1202,6 +883,7 @@ namespace Catchem.Extensions
             }
             return Properties.Resources.no_name;
         }
+
         public static string ToInventoryName(this ItemId pid)
         {
             switch (pid)

@@ -18,12 +18,14 @@ namespace PoGo.PokeMobBot.Logic.Tasks
     {
         public static async Task Execute(ISession session, CancellationToken cancellationToken)
         {
-            
-            
             cancellationToken.ThrowIfCancellationRequested();
+            if (!session.LogicSettings.CatchWildPokemon) return;
+
+            var usedItems = await session.Inventory.GetUsedItems();
+            if (usedItems == null || usedItems.Count <= 0) return;
 
             // Refresh inventory so that the player stats are fresh
-            await session.Inventory.RefreshCachedInventory();
+            //await session.Inventory.RefreshCachedInventory();
             
             session.EventDispatcher.Send(new DebugEvent()
             {
@@ -45,21 +47,19 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 };
  				var pokemon = new PokemonCacheItem(_pokemon);
 
-                session.EventDispatcher.Send(new PokemonsFoundEvent { Pokemons = new MapPokemon[] { _pokemon } });
-
                 if (session.LogicSettings.UsePokemonToNotCatchFilter &&
                     session.LogicSettings.PokemonsNotToCatch.Contains(pokemon.PokemonId))
                 {
                     session.EventDispatcher.Send(new NoticeEvent()
                     {
-                        Message = session.Translation.GetTranslation(TranslationString.PokemonIgnoreFilter,session.Translation.GetPokemonName(pokemon.PokemonId))
+                        Message = session.Translation.GetTranslation(TranslationString.PokemonIgnoreFilter, session.Translation.GetPokemonName(pokemon.PokemonId))
                     });
                 }
                 else
                 {
-                    var distance = LocationUtils.CalculateDistanceInMeters(session.Client.CurrentLatitude,
-                        session.Client.CurrentLongitude, pokemon.Latitude, pokemon.Longitude);
-                        await Task.Delay(session.LogicSettings.DelayCatchIncensePokemon);
+                    session.EventDispatcher.Send(new PokemonsFoundEvent { Pokemons = new[] { _pokemon } });
+
+                    await Task.Delay(session.LogicSettings.DelayCatchIncensePokemon);
 
                     var encounter =
                         await
@@ -68,7 +68,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
 
                     if (encounter.Result == IncenseEncounterResponse.Types.Result.IncenseEncounterSuccess)
                     {
-                        await CatchPokemonTask.Execute(session, encounter, pokemon);
+                        await CatchPokemonTask.Execute(session, encounter, pokemon, cancellationToken);
                     }
                     else if (encounter.Result == IncenseEncounterResponse.Types.Result.PokemonInventoryFull)
                     {

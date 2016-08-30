@@ -31,11 +31,17 @@ namespace PoGo.PokeMobBot.Logic.PoGoUtils
             PokeData = pokemon;
             PerfectCp = PokemonInfo.CalculateMaxCp(pokemon);
             MaximumPoweredCp = (int)PokemonInfo.GetMaxCpAtTrainerLevel(pokemon, trainerLevel);
-            Perfection = PokemonInfo.CalculatePokemonPerfection(pokemon);
+            Perfection = pokemon.CalculatePokemonPerfection();
             Level = PokemonInfo.GetLevel(pokemon);
             Move1 = PokemonInfo.GetPokemonMove1(pokemon);
             Move2 = PokemonInfo.GetPokemonMove2(pokemon);
-            AverageRankVsTypes = PokemonMoveInfo.GetPokemonMoveSet(PokemonMoveInfo.GetMoveSetCombinationIndex(pokemon.PokemonId, PokemonInfo.GetPokemonMove1(pokemon), PokemonInfo.GetPokemonMove2(pokemon))) != null ? PokemonMoveInfo.GetPokemonMoveSet(PokemonMoveInfo.GetMoveSetCombinationIndex(pokemon.PokemonId, PokemonInfo.GetPokemonMove1(pokemon), PokemonInfo.GetPokemonMove2(pokemon))).GetRankVsType("Average") : 0;
+            AverageRankVsTypes =
+                PokemonMoveInfo.GetPokemonMoveSet(PokemonMoveInfo.GetMoveSetCombinationIndex(pokemon.PokemonId,
+                    PokemonInfo.GetPokemonMove1(pokemon), PokemonInfo.GetPokemonMove2(pokemon))) != null
+                    ? PokemonMoveInfo.GetPokemonMoveSet(PokemonMoveInfo.GetMoveSetCombinationIndex(pokemon.PokemonId,
+                        PokemonInfo.GetPokemonMove1(pokemon), PokemonInfo.GetPokemonMove2(pokemon)))
+                        .GetRankVsType("Average")
+                    : 0;
 
         }
         public PokemonData PokeData { get; set; }
@@ -480,7 +486,7 @@ namespace PoGo.PokeMobBot.Logic.PoGoUtils
 
             var maxCPatLevel = maxAttackNoCpM * Math.Sqrt(maxDefenseNoCpM) * Math.Sqrt(maxStaminaNoCpM) * Math.Pow(cpm, 2) / 10;
 
-            return maxCPatLevel;
+            return Math.Max(maxCPatLevel, poke.Cp);
 
         }
 

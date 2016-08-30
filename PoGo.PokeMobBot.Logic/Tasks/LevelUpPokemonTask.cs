@@ -24,7 +24,8 @@ namespace PoGo.PokeMobBot.Logic.Tasks
         {
             // Refresh inventory so that the player stats are fresh
             await session.Inventory.RefreshCachedInventory();
-
+            var prevState = session.State;
+            session.State = BotState.LevelPoke;
             // get the families and the pokemons settings to do some actual smart stuff like checking if you have enough candy in the first place
             var pokemonFamilies = await session.Inventory.GetPokemonFamilies();
             var pokemonSettings = await session.Inventory.GetPokemonSettings();
@@ -62,6 +63,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                     await DoUpgrade(session, pokemon);
                 }
             }
+            session.State = prevState;
         }
 
         private static int GetCandyMinToKeep(IEnumerable<PokemonSettings> pokemonSettings, PokemonSettings currentPokemonSettings)
@@ -94,6 +96,24 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 session.EventDispatcher.Send(new NoticeEvent()
                 {
                     Message = session.Translation.GetTranslation(TranslationString.PokemonUpgradeSuccess, session.Translation.GetPokemonName(upgradeResult.UpgradedPokemon.PokemonId), upgradeResult.UpgradedPokemon.Cp)
+                });
+                var pokemonFamilies = await session.Inventory.GetPokemonFamilies();
+                var pokemonSettings = (await session.Inventory.GetPokemonSettings()).ToList();
+                var setting = pokemonSettings.Single(q => q.PokemonId == pokemon.PokemonId);
+                var family = pokemonFamilies.First(q => q.FamilyId == setting.FamilyId);
+                session.EventDispatcher.Send(new PokemonStatsChangedEvent
+                {
+                    Name = !string.IsNullOrEmpty(pokemon.Nickname)
+                       ? pokemon.Nickname
+                       : session.Translation.GetPokemonName(pokemon.PokemonId),
+                    Uid = pokemon.Id,
+                    Id = pokemon.PokemonId,
+                    Family = family.FamilyId,
+                    Candy = family.Candy_,
+                    Cp = upgradeResult.UpgradedPokemon.Cp,
+                    MaxCp = (int)PokemonInfo.GetMaxCpAtTrainerLevel(upgradeResult.UpgradedPokemon, session.Runtime.CurrentLevel),
+                    Iv = upgradeResult.UpgradedPokemon.CalculatePokemonPerfection(),
+                    Favourite = pokemon.Favorite == 1
                 });
             }
             else if (upgradeResult.Result == POGOProtos.Networking.Responses.UpgradePokemonResponse.Types.Result.ErrorInsufficientResources)

@@ -1,16 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using GeoCoordinatePortable;
-using Google.Protobuf;
 using PoGo.PokeMobBot.Logic.Event;
 using PoGo.PokeMobBot.Logic.State;
 using PoGo.PokeMobBot.Logic.Utils;
 using PokemonGo.RocketAPI.Extensions;
-using PokemonGo.RocketAPI.Rpc;
-using POGOProtos.Data;
 using POGOProtos.Enums;
 using POGOProtos.Inventory.Item;
 using POGOProtos.Map.Fort;
@@ -228,7 +224,7 @@ namespace PoGo.PokeMobBot.Logic
                 RecentlyCaughtPokemons.Add(pokemon.EncounterId, DateTime.UtcNow.AddMinutes(15).ToUnixTime());
         }
 
-        public void UsedPokestop(FortCacheItem stop)
+        public void UsedPokestop(FortCacheItem stop, ISession session)
         {
             var stamp = DateTime.UtcNow.AddMinutes(5).ToUnixTime();
             foreach (FortCacheItem result in _FortDatas)
@@ -237,10 +233,10 @@ namespace PoGo.PokeMobBot.Logic
                 {
                     result.Used = true;
                     result.CooldownCompleteTimestampMS = stamp;
-                    RuntimeSettings.lastPokeStopId = stop.Id;
-                    RuntimeSettings.lastPokeStopCoordinate = new GeoCoordinate(stop.Latitude, stop.Longitude);
-                    if (RuntimeSettings.TargetStopID == stop.Id)
-                        RuntimeSettings.BreakOutOfPathing = true;
+                    session.Runtime.lastPokeStopId = stop.Id;
+                    session.Runtime.lastPokeStopCoordinate = new GeoCoordinate(stop.Latitude, stop.Longitude);
+                    if (session.Runtime.TargetStopID == stop.Id)
+                        session.Runtime.BreakOutOfPathing = true;
                 }
 
             }

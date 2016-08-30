@@ -17,6 +17,8 @@ namespace PoGo.PokeMobBot.Logic.Tasks
 
         public static async Task Execute(ISession session, CancellationToken cancellationToken)
         {
+            var prevState = session.State;
+            session.State = BotState.Recycle;
             cancellationToken.ThrowIfCancellationRequested();
             await session.Inventory.RefreshCachedInventory();
             var currentTotalItems = await session.Inventory.GetTotalItemCount();
@@ -30,15 +32,20 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 cancellationToken.ThrowIfCancellationRequested();
                 session.EventDispatcher.Send(new ItemRecycledEvent { Id = item.ItemId, Count = item.Count });
                 await session.Client.Inventory.RecycleItem(item.ItemId, item.Count);
-                await Task.Delay(session.LogicSettings.DelayRecyleItem, cancellationToken);
+                await Task.Delay(session.LogicSettings.DelayRecycleItem, cancellationToken);
             }
 
             await OptimizedRecycleBalls(session, cancellationToken);
+            await Task.Delay(session.LogicSettings.DelayBetweenPlayerActions, cancellationToken);
             await OptimizedRecyclePotions(session, cancellationToken);
+            await Task.Delay(session.LogicSettings.DelayBetweenPlayerActions, cancellationToken);
             await OptimizedRecycleRevives(session, cancellationToken);
+            await Task.Delay(session.LogicSettings.DelayBetweenPlayerActions, cancellationToken);
             await OptimizedRecycleBerries(session, cancellationToken);
-
+            await Task.Delay(session.LogicSettings.DelayBetweenPlayerActions, cancellationToken);
             await session.Inventory.RefreshCachedInventory();
+            await Task.Delay(session.LogicSettings.DelayBetweenPlayerActions, cancellationToken);
+            session.State = prevState;
         }
 
         private static async Task OptimizedRecycleBalls(ISession session, CancellationToken cancellationToken)
@@ -171,10 +178,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 cancellationToken.ThrowIfCancellationRequested();
                 session.EventDispatcher.Send(new ItemRecycledEvent { Id = item, Count = itemsToRecycle });
                 await session.Client.Inventory.RecycleItem(item, itemsToRecycle);
-                if (session.LogicSettings.Teleport)
-                    await Task.Delay(session.LogicSettings.DelayRecyleItem, cancellationToken);
-                else
-                    await DelayingUtils.Delay(session.LogicSettings.DelayBetweenPlayerActions, 500);
+                await Task.Delay(session.LogicSettings.DelayRecycleItem, cancellationToken);
             }
         }
     }

@@ -15,6 +15,9 @@ namespace PoGo.PokeMobBot.Logic.Tasks
     {
         public static async Task Execute(ISession session, ItemId item, int amount, CancellationToken cancellationToken)
         {
+            if (!await CheckBotStateTask.Execute(session, cancellationToken)) return;
+            var prevState = session.State;
+            session.State = BotState.Recycle;
             cancellationToken.ThrowIfCancellationRequested();
             await session.Inventory.RefreshCachedInventory();
             var itemCount = await session.Inventory.GetItemAmountByType(item);
@@ -22,6 +25,7 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 amount = itemCount;
             await RemoveItems(amount, item, cancellationToken, session);
             await session.Inventory.RefreshCachedInventory();
+            session.State = prevState;
         }
         private static async Task RemoveItems(int itemCount, ItemId item, CancellationToken cancellationToken, ISession session)
         {
@@ -32,9 +36,9 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 session.EventDispatcher.Send(new ItemRecycledEvent { Id = item, Count = itemsToRecycle });
                 await session.Client.Inventory.RecycleItem(item, itemsToRecycle);
                 if (session.LogicSettings.Teleport)
-                    await Task.Delay(session.LogicSettings.DelayRecyleItem, cancellationToken);
+                    await Task.Delay(session.LogicSettings.DelayRecycleItem, cancellationToken);
                 else
-                    await DelayingUtils.Delay(session.LogicSettings.DelayBetweenPlayerActions, 500);
+                    await DelayingUtils.Delay(session.LogicSettings.DelayRecycleItem, 500);
             }
         }
     }

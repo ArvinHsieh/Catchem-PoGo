@@ -21,7 +21,8 @@ namespace PoGo.PokeMobBot.Logic.Tasks
         public static async Task Execute(ISession session, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
+            var prevState = session.State;
+            session.State = BotState.Evolve;
             // Refresh inventory so that the player stats are fresh
             await session.Inventory.RefreshCachedInventory();
 
@@ -82,12 +83,22 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                             Cp = evolveResponse.EvolvedPokemonData.Cp,
                             Perfection = evolveResponse.EvolvedPokemonData.CalculatePokemonPerfection(),
                             Family = family.FamilyId,
-                            Candy = family.Candy_
+                            Candy = family.Candy_,
+                            Level = PokemonInfo.GetLevel(pokemon),
+                            Move1 = pokemon.Move1,
+                            Move2 = pokemon.Move2,
+                            Type1 = setting.Type,
+                            Type2 = setting.Type2,
+                            Stats = setting.Stats,
+                            MaxCp = (int)PokemonInfo.GetMaxCpAtTrainerLevel(pokemon, session.Runtime.CurrentLevel),
+                            Stamina = pokemon.Stamina,
+                            MaxStamina = pokemon.StaminaMax
                         });
                     }
                     await DelayingEvolveUtils.Delay(session.LogicSettings.DelayEvolvePokemon, 0, session.LogicSettings.DelayEvolveVariation);
                 }
             }
+            session.State = prevState;
         }
 
         public static async Task UseLuckyEgg(ISession session)

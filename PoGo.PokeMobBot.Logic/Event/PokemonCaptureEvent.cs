@@ -1,8 +1,10 @@
 ﻿#region using directives
 
+using PoGo.PokeMobBot.Logic.PoGoUtils;
 using POGOProtos.Enums;
 using POGOProtos.Inventory.Item;
 using POGOProtos.Networking.Responses;
+using POGOProtos.Settings.Master.Pokemon;
 
 #endregion
 
@@ -29,5 +31,12 @@ namespace PoGo.PokeMobBot.Logic.Event
         public CatchPokemonResponse.Types.CatchStatus Status;
         public double Latitude;
         public double Longitude;
+        public PokemonMove Move1;
+        public PokemonMove Move2;
+        public PokemonType Type1;
+        public PokemonType Type2;
+        public StatsAttributes Stats;
+        public int Stamina;
+        public int MaxStamina;
     }
 }

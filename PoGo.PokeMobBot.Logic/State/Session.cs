@@ -7,6 +7,7 @@ using POGOProtos.Networking.Responses;
 using System.Net;
 using GeoCoordinatePortable;
 using PoGo.PokeMobBot.Logic.API;
+using PoGo.PokeMobBot.Logic.PoGoUtils;
 
 #endregion
 
@@ -17,6 +18,7 @@ namespace PoGo.PokeMobBot.Logic.State
         ISettings Settings { get; }
         Inventory Inventory { get; }
         Client Client { get; }
+        BotState State { get; set; }
         GetPlayerResponse Profile { get; set; }
         HumanNavigation Navigation { get; }
         MapCache MapCache { get; }
@@ -27,8 +29,24 @@ namespace PoGo.PokeMobBot.Logic.State
         GeoCoordinate ForceMoveTo { get; set; }
         MapzenAPI MapzenApi { get; set; }
 
+        RuntimeSettings Runtime { get; set; }
+
         bool ForceMoveJustDone { get; set; }
         void StartForceMove(double lat, double lng);
+    }
+
+    public enum BotState
+    {
+        Idle,
+        Walk,
+        Catch,
+        Transfer,
+        Battle,
+        Evolve,
+        LevelPoke,
+        Renaming,
+        Recycle,
+        Busy
     }
 
 
@@ -42,7 +60,11 @@ namespace PoGo.PokeMobBot.Logic.State
             EventDispatcher = new EventDispatcher();
             Translation = Common.Translation.Load(logicSettings);
             Reset(settings, LogicSettings);
+            Runtime = new RuntimeSettings();
+            State = BotState.Idle;
         }
+
+        public BotState State { get; set; }
 
         public ISettings Settings { get; }
 
@@ -51,13 +73,15 @@ namespace PoGo.PokeMobBot.Logic.State
         public Client Client { get; private set; }
         public MapzenAPI MapzenApi { get; set; }
 
+        public RuntimeSettings Runtime { get; set; }
+
         public GetPlayerResponse Profile { get; set; }
         public HumanNavigation Navigation { get; private set; }
 
         public MapCache MapCache { get; private set; }
         public ILogicSettings LogicSettings { get; }
 
-        public ITranslation Translation { get; }
+        public ITranslation Translation { get; set; }
 
         public IEventDispatcher EventDispatcher { get; }
 

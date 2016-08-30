@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using Catchem.Classes;
 using Catchem.Extensions;
 using Catchem.Interfaces;
@@ -22,6 +24,8 @@ namespace Catchem.Pages
         private BotWindowData _bot;
         private ISession CurSession => _bot.Session;
         private bool _loadingUi;
+        private bool _inRefresh;
+        private bool _inRefreshItems;
         public PlayerPage()
         {
             InitializeComponent();
@@ -80,9 +84,11 @@ namespace Catchem.Pages
 
         private async void RefreshPokemons()
         {
-            if (_bot == null || !_bot.Started) return;
+            if (_bot == null || !_bot.Started || _inRefresh) return;
+            _inRefresh = true;
             Action<IEvent> action = (evt) => _bot.Session.EventDispatcher.Send(evt);
             await PokemonListTask.Execute(_bot.Session, action);
+            _inRefresh = false;
         }
 
         private void mi_recycleItem_Click(object sender, RoutedEventArgs e)
@@ -95,6 +101,7 @@ namespace Catchem.Pages
             if (inputDialog.ShowDialog() != true) return;
             if (int.TryParse(inputDialog.Answer, out amount))
                 RecycleItem(CurSession, item, amount, _bot.CancellationToken);
+
         }
 
         private async void RecycleItem(ISession session, ItemUiData item, int amount, CancellationToken cts)
@@ -177,14 +184,14 @@ namespace Catchem.Pages
             if (_bot.Stats?.ExportStats == null) return;
             if (_bot.Stats.TotalStardust > 0)
                 _bot.StarDust = _bot.Stats.TotalStardust;
-            _bot.Level = _bot.Stats.ExportStats.Level;
             l_xp.Content = _bot.Stats.ExportStats.CurrentXp;
             l_xp_farmed.Content = _bot.Stats.TotalExperience;
             l_Pokemons_farmed.Content = _bot.Stats.TotalPokemons;
             l_Pokemons_transfered.Content = _bot.Stats.TotalPokemonsTransfered;
             l_Pokestops_farmed.Content = _bot.Stats.TotalPokestops;
             l_level.Content = _bot.Stats.ExportStats.Level;
-            l_level_nextime.Content = $"{_bot.Stats.ExportStats.HoursUntilLvl.ToString("00")}:{_bot.Stats.ExportStats.MinutesUntilLevel.ToString("00")}";
+            NextLevelInTextBox.Text = $"{_bot.Stats.ExportStats.HoursUntilLvl.ToString("00")}:{_bot.Stats.ExportStats.MinutesUntilLevel.ToString("00")} ({_bot.Stats.ExportStats.CurrentXp}/{_bot.Stats.ExportStats.LevelupXp})";
+            LevelProgressBar.Value = (int)(_bot.Stats.ExportStats.CurrentXp*100/_bot.Stats.ExportStats.LevelupXp);
         }
 
         public void ClearData()
@@ -195,14 +202,16 @@ namespace Catchem.Pages
 
         private void mi_refreshItems_Click(object sender, RoutedEventArgs e)
         {
-            if (!_bot.Started) return;
+            if (!_bot.Started || _inRefreshItems) return;
             RefreshItems();
         }
 
         private async void RefreshItems()
         {
+            _inRefreshItems = true;
             Action<IEvent> action = (evt) => CurSession.EventDispatcher.Send(evt);
             await InventoryListTask.Execute(CurSession, action);
+            _inRefreshItems = false;
         }
 
         private async void SelectTeam(TeamColor clr)
@@ -229,6 +238,13 @@ namespace Catchem.Pages
             if (inputDialog.ShowDialog() != true || inputDialog.ObjectAnswer == null) return;
             var team = (TeamColor)inputDialog.ObjectAnswer;
             SelectTeam(team);
+        }
+
+        private void PokeWrapper_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var uGrid = sender as UniformGrid;
+            if (uGrid == null) return;
+            uGrid.Columns = (int)(uGrid.ActualWidth/150);
         }
     }
 }

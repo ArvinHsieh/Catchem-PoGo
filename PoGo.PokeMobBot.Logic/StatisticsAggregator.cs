@@ -186,6 +186,10 @@ namespace PoGo.PokeMobBot.Logic
         {
 
         }
+        public void HandleEvent(PokemonsWildFoundEvent evt, ISession session)
+        {
+
+        }
         public void HandleEvent(PokemonStatsChangedEvent evt, ISession session)
         {
 
@@ -208,6 +212,25 @@ namespace PoGo.PokeMobBot.Logic
 
         }
         public void HandleEvent(PokemonListEvent evt, ISession session)
+        {
+
+        }
+
+        public void HandleEvent(GymPokeEvent evt, ISession session)
+        {
+
+        }
+
+        public void HandleEvent(PokestopsOptimalPathEvent evt, ISession session)
+        {
+
+        }
+
+        public void HandleEvent(TeamSetEvent evt, ISession session)
+        {
+
+        }
+        public void HandleEvent(ItemLostEvent evt, ISession session)
         {
 
         }

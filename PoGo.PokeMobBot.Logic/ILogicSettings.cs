@@ -1,6 +1,7 @@
 ﻿#region using directives
 
 using System.Collections.Generic;
+using PoGo.PokeMobBot.Logic.PoGoUtils;
 using POGOProtos.Enums;
 using POGOProtos.Inventory.Item;
 
@@ -68,7 +69,9 @@ namespace PoGo.PokeMobBot.Logic
         bool StartupWelcomeDelay { get; }
         string TranslationLanguageCode { get; }
 		bool StopBotToAvoidBanOnUnknownLoginError { get; }
-       
+        bool AutoCompleteTutorial { get; }
+        string DesiredNickname { get; }
+        bool BeLikeRobot { get; }
 
         //coords and movement
         bool Teleport { get; }
@@ -77,18 +80,24 @@ namespace PoGo.PokeMobBot.Logic
         bool UseHumanPathing { get; }
 
         int MaxTravelDistanceInMeters { get; }
-        bool UseGpxPathing { get; }
-        string GpxFile { get; }
+        bool UseCustomRoute { get; }
         bool UsePokeStopLuckyNumber { get; }
         int PokestopSkipLuckyNumberMinUse { get; }
         int PokestopSkipLuckyNumber { get; }
         int PokestopSkipLuckyMin { get; }
         int PokestopSkipLuckyMax { get; }
-        bool UseOpenLsRouting { get; }
+        RoutingService RoutingService { get; }
+
+        CustomRoute CustomRoute { get; }
+
+        bool LootPokestops { get; }
 
         //MapzenAPI
         bool UseMapzenApiElevation { get; }
         string MapzenApiElevationKey { get; }
+        string GoogleDirectionsApiKey { get; }
+        string MapzenValhallaApiKey { get; }
+        string MobBotRoutingApiKey { get; }
         //delays
         int DelayBetweenPlayerActions { get; }
         int DelayBetweenPokemonCatch { get; }
@@ -101,7 +110,7 @@ namespace PoGo.PokeMobBot.Logic
         double DelayEvolveVariation { get; }
         int DelayPokestop { get; }
         int DelayPositionCheckState { get; }
-        int DelayRecyleItem { get; }
+        int DelayRecycleItem { get; }
         int DelaySnipePokemon { get; }
         int DelaySoftbanRetry { get; }
         int DelayTransferPokemon { get; }
@@ -110,6 +119,7 @@ namespace PoGo.PokeMobBot.Logic
         //incubator
         bool UseEggIncubators { get; } 
         bool AlwaysPrefferLongDistanceEgg { get; }
+        bool UseOnlyUnlimitedIncubator { get; }
         
 		//display
         bool DisplayPokemonMaxPoweredCp { get; }

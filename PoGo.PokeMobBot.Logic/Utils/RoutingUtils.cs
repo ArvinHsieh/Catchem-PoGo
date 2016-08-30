@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-using C5;
 using GeoCoordinatePortable;
 using static System.Double;
 
@@ -8,12 +8,119 @@ namespace PoGo.PokeMobBot.Logic.Utils
 {
     public static class RoutingUtils
     {
-        public static List<FortCacheItem> GetBestRoute(FortCacheItem startingPokestop,
+        public static List<GeoCoordinate> GetBestRoute(FortCacheItem startingPokestop,
             IEnumerable<FortCacheItem> pokestopsList, int amountToVisit)
         {
+            var result = new List<GeoCoordinate>();
             var map = new MapMatrix(pokestopsList, startingPokestop, amountToVisit);
             var route = map.Optimize();
-            return route;
+            foreach (var wp in route)
+            {
+                result.Add(new GeoCoordinate(wp.Latitude, wp.Longitude));
+            }
+            return result;
+        }
+
+
+        public static IEnumerable<GoogleLocation> DecodePolyline(string polyline)
+        {
+            if (string.IsNullOrEmpty(polyline))
+                throw new ArgumentNullException(nameof(polyline));
+
+            var polylineChars = polyline.ToCharArray();
+            var index = 0;
+
+            var currentLat = 0;
+            var currentLng = 0;
+
+            while (index < polylineChars.Length)
+            {
+                // calculate next latitude
+                var sum = 0;
+                var shifter = 0;
+                int next5Bits;
+                do
+                {
+                    next5Bits = polylineChars[index++] - 63;
+                    sum |= (next5Bits & 31) << shifter;
+                    shifter += 5;
+                } while (next5Bits >= 32 && index < polylineChars.Length);
+
+                if (index >= polylineChars.Length)
+                    break;
+
+                currentLat += (sum & 1) == 1 ? ~(sum >> 1) : (sum >> 1);
+
+                //calculate next longitude
+                sum = 0;
+                shifter = 0;
+                do
+                {
+                    next5Bits = polylineChars[index++] - 63;
+                    sum |= (next5Bits & 31) << shifter;
+                    shifter += 5;
+                } while (next5Bits >= 32 && index < polylineChars.Length);
+
+                if (index >= polylineChars.Length && next5Bits >= 32)
+                    break;
+
+                currentLng += (sum & 1) == 1 ? ~(sum >> 1) : (sum >> 1);
+
+                yield return new GoogleLocation
+                {
+                    lat = Convert.ToDouble(currentLat) / 1E5,
+                    lng = Convert.ToDouble(currentLng) / 1E5
+                };
+            }
+        }
+
+        public static IEnumerable<List<double>> DecodePolylineToList(string polyline, int precision = 5)
+        {
+            if (string.IsNullOrEmpty(polyline))
+                throw new ArgumentNullException(nameof(polyline));
+
+            var polylineChars = polyline.ToCharArray();
+            var index = 0;
+
+            var currentLat = 0;
+            var currentLng = 0;
+            var factor = Math.Pow(10, precision);
+
+            while (index < polylineChars.Length)
+            {
+                // calculate next latitude
+                var sum = 0;
+                var shifter = 0;
+                int next5Bits;
+                do
+                {
+                    next5Bits = polylineChars[index++] - 63;
+                    sum |= (next5Bits & 31) << shifter;
+                    shifter += 5;
+                } while (next5Bits >= 32 && index < polylineChars.Length);
+
+                if (index >= polylineChars.Length)
+                    break;
+
+                currentLat += (sum & 1) == 1 ? ~(sum >> 1) : (sum >> 1);
+
+                //calculate next longitude
+                sum = 0;
+                shifter = 0;
+                do
+                {
+                    next5Bits = polylineChars[index++] - 63;
+                    sum |= (next5Bits & 31) << shifter;
+                    shifter += 5;
+                } while (next5Bits >= 32 && index < polylineChars.Length);
+
+                if (index >= polylineChars.Length && next5Bits >= 32)
+                    break;
+
+                currentLng += (sum & 1) == 1 ? ~(sum >> 1) : (sum >> 1);
+
+                yield return new List<double> { Convert.ToDouble(currentLat) / factor, Convert.ToDouble(currentLng) / factor };
+            }
         }
     }
 
@@ -24,24 +131,28 @@ namespace PoGo.PokeMobBot.Logic.Utils
         private readonly double[,] _newFortsDistance;
         private bool LimitedVisit => _fortsToVisit > 0;
         private readonly int _fortsToVisit;
-        private int[] _opt;
+        private readonly int[] _opt;
         private double[] _rowMin;
         private double[] _colMin;
         private int _size;
-        private bool _nearestNeigh;
-
-        private int[] _currentRoute = new [] {0};
+        private readonly bool _nearestNeigh;
+        private readonly bool _failedInit;
 
         public MapMatrix(IEnumerable<FortCacheItem> forts, FortCacheItem fortToStart, int fortsToVisit = 0, bool nearestNeigh = true)
         {
             Forts = forts.ToArray();
             _size = Forts.Length;
+            if (_size == 0)
+            {
+                _failedInit = true;
+                return;
+            }
             _nearestNeigh = nearestNeigh;
             _fortsDistance = new double[_size,_size];
             _newFortsDistance = new double[_size, _size];
-            for (var i = 0; i < Forts.Length; i++)
+            for (var i = 0; i < _size; i++)
             {
-                for (var j = 0; j < Forts.Length; j++)
+                for (var j = 0; j < _size; j++)
                 {
                     if (i != j)
                     {
@@ -55,7 +166,7 @@ namespace PoGo.PokeMobBot.Logic.Utils
                     }
                 }
             }
-            if (_fortsToVisit < _size)
+            if (_fortsToVisit < _size - 1)
                 _fortsToVisit = fortsToVisit;
 
             _opt = LimitedVisit ? new int[_fortsToVisit] : new int[_size];
@@ -111,6 +222,8 @@ namespace PoGo.PokeMobBot.Logic.Utils
 
         public List<FortCacheItem> Optimize()
         {
+            if (_failedInit)
+                return new List<FortCacheItem>();
             if (_nearestNeigh)
                 return OptimizeNearest();
 
@@ -119,26 +232,32 @@ namespace PoGo.PokeMobBot.Logic.Utils
 
         private List<FortCacheItem> OptimizeNearest()
         {
-            for (var i = 1; i < _opt.Length; i++)
+            try
             {
-                var curDist = double.MaxValue;
-                for (var j = 0; j < _size; j++)
+                for (var i = 1; i < _opt.Length; i++)
                 {
-                    if (_opt.Contains(j)) continue;
-                    if (curDist < _fortsDistance[_opt[i - 1], j]) continue;
-                    curDist = _fortsDistance[_opt[i - 1], j];
-                    _opt[i] = j;
+                    var curDist = MaxValue;
+                    for (var j = 0; j < _size; j++)
+                    {
+                        if (_opt.Contains(j)) continue;
+                        if (curDist < _fortsDistance[_opt[i - 1], j]) continue;
+                        curDist = _fortsDistance[_opt[i - 1], j];
+                        _opt[i] = j;
+                    }
                 }
             }
-
-            return _opt.Select(t => Forts[t]).ToList();
+            catch (Exception)
+            {
+                //ignore
+            }
+            return _opt.Where(x => x >= 0).Select(t => Forts[t]).ToList();
         }
 
         private List<FortCacheItem> OptimizePart()
         {
-            for (int i = 1; i < _opt.Length; i++)
+            for (var i = 1; i < _opt.Length; i++)
             {
-                for (int j = 0; j < _size; j++)
+                for (var j = 0; j < _size; j++)
                 {
                     if (!_opt.Contains(j))
                     {
@@ -153,7 +272,7 @@ namespace PoGo.PokeMobBot.Logic.Utils
             var opt = new int[_opt.Length];
              _opt.CopyTo(opt, 0);
             var optDist = CalcDist(opt);
-            int curIndx = _opt.Length - 1;
+            var curIndx = _opt.Length - 1;
             while (!lastHit)
             {
                 if (opt[curIndx] == _size - 1 || opt.Contains(_size - 1))
@@ -163,7 +282,7 @@ namespace PoGo.PokeMobBot.Logic.Utils
                     opt = ResetOpt(opt, curIndx + 1);
                     continue;
                 }
-                for (int i = opt[curIndx] + 1; i < _size; i++)
+                for (var i = opt[curIndx] + 1; i < _size; i++)
                 {
                     if (!opt.Contains(i))
                     {

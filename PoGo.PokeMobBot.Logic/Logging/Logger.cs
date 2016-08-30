@@ -1,10 +1,11 @@
 #region using directives
 
 using System;
-using System.Collections;
 using System.IO;
 using PoGo.PokeMobBot.Logic.State;
 using System.Collections.Generic;
+using PoGo.PokeMobBot.Logic.Extensions;
+
 #endregion
 
 namespace PoGo.PokeMobBot.Logic.Logging
@@ -13,40 +14,69 @@ namespace PoGo.PokeMobBot.Logic.Logging
     {
         private static ILogger _logger;
         private static string _path;
-        private static Queue<string> _logQueue = new Queue<string>();
-        private static bool _writerActive = false;
+        private static readonly Queue<string> LogQueue = new Queue<string>();
+        private static bool _writerActive;
 
-        private static async void Log(string message)
+        private static void Log(string message)
         {
-            _logQueue.Enqueue(message);
-            if (_writerActive) return;
+            LogQueue.Enqueue(message);
+
+            if (!_writerActive) LogWorker();
+        }
+
+        private static async void LogWorker()
+        {
             _writerActive = true;
+            var delay = 10;
+            var currentLogPath = Path.Combine(_path,
+                $"PokeMobBot-{DateTime.Today.ToString("yyyy-MM-dd")}-{DateTime.Now.ToString("HH")}.txt");
+            var prevH = DateTime.Now.Hour;
+            var nextHour = false;
             try
             {
-                using (
-                    var log =
-                        File.AppendText(Path.Combine(_path,
-                            $"PokeMobBot-{DateTime.Today.ToString("yyyy-MM-dd")}-{DateTime.Now.ToString("HH")}.txt"))
-                    )
+                using (var w = File.AppendText(currentLogPath))
                 {
-                    while (_logQueue.Count > 0)
+                    var loggedLines = 0;
+                    while (!nextHour)
                     {
-                        var m = _logQueue.Dequeue();
-                        log.WriteLine(m);
-                        await System.Threading.Tasks.Task.Delay(10);
+                        if (LogQueue.Count > 0)
+                        {
+                            var m = LogQueue.Dequeue();
+                            await w.WriteLineAsync(m);
+                            loggedLines++;
+                        }
+                        if (loggedLines >= 100)
+                        {
+                            w.Flush();
+                            loggedLines = 0;
+                        }
+
+                        if (LogQueue.Count > 100)
+                        {
+                            delay = 0;
+                        }
+                        else if (delay == 0 && LogQueue.Count == 0)
+                        {
+                            delay = 10;
+                        }
+                        if (DateTime.Now.Hour != prevH)
+                        {
+                            nextHour = true;
+                            LogWorker();
+                        }
+                        await System.Threading.Tasks.Task.Delay(delay);
                     }
-                    log.Flush();
-                    _writerActive = false;
+                    w.Flush();
                 }
             }
-            catch
+            catch (Exception)
             {
-                //ignore
+                LogWorker();
             }
         }
 
         /// <summary>
-        ///     Set the logger. All future requests to <see cref="Write(string,LogLevel,ConsoleColor)" /> will use that logger, any
+        ///     Set the logger. All future requests to <see cref="Write(string,LogLevel,ConsoleColor,ISession)" /> will use that logger, any
         ///     old will be
         ///     unset.
         /// </summary>
@@ -75,6 +105,7 @@ namespace PoGo.PokeMobBot.Logic.Logging
         /// <param name="message">The message to log.</param>
         /// <param name="level">Optional level to log. Default <see cref="LogLevel.Info" />.</param>
         /// <param name="color">Optional. Default is automatic color.</param>
+        /// <param name="session">Bot's session parameter</param>
         public static void Write(string message, LogLevel level = LogLevel.Info, ConsoleColor color = ConsoleColor.Black, ISession session = null)
         {
             if (_logger == null)
@@ -109,6 +140,7 @@ namespace PoGo.PokeMobBot.Logic.Logging
         Favorite = 15, //added by lars
         UnFavorite = 16, //added by lars
         Gym = 17,
-        Debug = 18, //always have debug as last enum.
+		Telegram = 18,
+        Debug = 19, //always have debug as last enum.
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,6 +21,13 @@ namespace Catchem.Pages
         public BotWindowData Bot;
         public bool LoadingUi;
         public string SubPath;
+        private CatchemSettings _globalSettings;
+
+        public void SetGlobalSettings(CatchemSettings settings)
+        {
+            _globalSettings = settings;
+            CustomRouteComboBox.ItemsSource = _globalSettings.Routes;
+        }
 
         public SettingsPage()
         {
@@ -64,23 +72,38 @@ namespace Catchem.Pages
             foreach (var uiElem in settings_grid.GetLogicalChildCollection<TextBox>())
             {
                 string val;
-                if (Extensions.Extensions.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
+                if (UiHandlers.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
                     uiElem.Text = val;
             }
 
             foreach (var uiElem in settings_grid.GetLogicalChildCollection<PasswordBox>())
             {
                 string val;
-                if (Extensions.Extensions.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
+                if (UiHandlers.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
                     uiElem.Password = val;
             }
 
             foreach (var uiElem in settings_grid.GetLogicalChildCollection<CheckBox>())
             {
                 bool val;
-                if (Extensions.Extensions.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
+                if (UiHandlers.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
                     uiElem.IsChecked = val;
             }
+
+            foreach (var uiElem in settings_grid.GetLogicalChildCollection<ComboBox>())
+            {
+                Enum val;
+                if (UiHandlers.GetValueByName(uiElem.Name.Substring(2), Bot.GlobalSettings, out val))
+                {
+                    var valType = val.GetType();
+                    uiElem.ItemsSource = Enum.GetValues(valType);
+                    uiElem.SelectedItem = val;
+                }
+            }
+
+            CustomRouteComboBox.SelectedItem =
+                _globalSettings.Routes.FirstOrDefault(x => x.Name == Bot.GlobalSettings.LocationSettings.CustomRouteName);
+
 
             LoadingUi = false;
         }
@@ -90,41 +113,31 @@ namespace Catchem.Pages
             authBox.ItemsSource = Enum.GetValues(typeof(AuthType));
         }
 
-        private void HandleUiElementChangedEvent(object uiElement)
-        {
-            var box = uiElement as TextBox;
-            if (box != null)
-            {
-                var propName = box.Name.Replace("c_", "");
-                Extensions.Extensions.SetValueByName(propName, box.Text, Bot.GlobalSettings);
-                return;
-            }
-            var chB = uiElement as CheckBox;
-            if (chB != null)
-            {
-                var propName = chB.Name.Replace("c_", "");
-                Extensions.Extensions.SetValueByName(propName, chB.IsChecked, Bot.GlobalSettings);
-            }
-            var passBox = uiElement as PasswordBox;
-            if (passBox != null)
-            {
-                var propName = passBox.Name.Replace("c_", "");
-                Extensions.Extensions.SetValueByName(propName, passBox.Password, Bot.GlobalSettings);
-            }
-        }
-
         private void BotPropertyChanged(object sender, EventArgs e)
         {
             if (Bot == null || LoadingUi) return;
-            HandleUiElementChangedEvent(sender);
+            UiHandlers.HandleUiElementChangedEvent(sender, Bot.GlobalSettings);
         }
 
         private void authBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (Bot == null || LoadingUi) return;
             var comboBox = sender as ComboBox;
-            if (comboBox != null)
+            if (comboBox == null) return;
+            if (Equals(Bot.GlobalSettings.Auth.AuthType, (AuthType) comboBox.SelectedItem)) return;
+            if (Bot.GlobalSettings.Auth.AuthType == AuthType.Google)
+            {
                 Bot.GlobalSettings.Auth.AuthType = (AuthType)comboBox.SelectedItem;
+                loginBox.Text = Bot.GlobalSettings.Auth.PtcUsername;
+                passwordBox.Password = Bot.GlobalSettings.Auth.PtcPassword;
+            }
+            else
+            {
+                Bot.GlobalSettings.Auth.AuthType = (AuthType)comboBox.SelectedItem;
+                loginBox.Text = Bot.GlobalSettings.Auth.GoogleUsername;
+                passwordBox.Password = Bot.GlobalSettings.Auth.GooglePassword;
+            }
+            
         }
 
         private void loginBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -167,35 +180,68 @@ namespace Catchem.Pages
         private async void StartFillFromRealDevice()
         {
             var dd = await Adb.GetDeviceData();
-            c_DeviceId.Text = Bot.GlobalSettings.Device.DeviceId = dd.DeviceId;
-            c_AndroidBoardName.Text = Bot.GlobalSettings.Device.AndroidBoardName = dd.AndroidBoardName;
-            c_AndroidBootLoader.Text = Bot.GlobalSettings.Device.AndroidBootLoader = dd.AndroidBootloader;
-            c_DeviceBrand.Text = Bot.GlobalSettings.Device.DeviceBrand = dd.DeviceBrand;
-            c_DeviceModel.Text = Bot.GlobalSettings.Device.DeviceModel = dd.DeviceModel;
-            c_DeviceModelIdentifier.Text = Bot.GlobalSettings.Device.DeviceModelIdentifier = dd.DeviceModelIdentifier;
-            c_HardwareManufacturer.Text = Bot.GlobalSettings.Device.HardwareManufacturer = dd.HardwareManufacturer;
-            c_HardWareModel.Text = Bot.GlobalSettings.Device.HardWareModel = dd.HardwareModel;
-            c_FirmwareBrand.Text = Bot.GlobalSettings.Device.FirmwareBrand = dd.FirmwareBrand;
-            c_FirmwareTags.Text = Bot.GlobalSettings.Device.FirmwareTags = dd.FirmwareTags;
-            c_FirmwareType.Text = Bot.GlobalSettings.Device.FirmwareType = dd.FirmwareType;
-            c_FirmwareFingerprint.Text = Bot.GlobalSettings.Device.FirmwareFingerprint = dd.FirmwareFingerprint;
+            Bot.GlobalSettings.Device.DeviceId = dd.DeviceId;
+            Bot.GlobalSettings.Device.AndroidBoardName = dd.AndroidBoardName;
+            Bot.GlobalSettings.Device.AndroidBootLoader = dd.AndroidBootloader;
+            Bot.GlobalSettings.Device.DeviceBrand = dd.DeviceBrand;
+            Bot.GlobalSettings.Device.DeviceModel = dd.DeviceModel;
+            Bot.GlobalSettings.Device.DeviceModelIdentifier = dd.DeviceModelIdentifier;
+            Bot.GlobalSettings.Device.HardwareManufacturer = dd.HardwareManufacturer;
+            Bot.GlobalSettings.Device.HardWareModel = dd.HardwareModel;
+            Bot.GlobalSettings.Device.FirmwareBrand = dd.FirmwareBrand;
+            Bot.GlobalSettings.Device.FirmwareTags = dd.FirmwareTags;
+            Bot.GlobalSettings.Device.FirmwareType = dd.FirmwareType;
+            Bot.GlobalSettings.Device.FirmwareFingerprint = dd.FirmwareFingerprint;
+            FillBoxesFromSettings();
+        }
+
+        private void FillBoxesFromSettings()
+        {
+            c_DeviceId.Text = Bot.GlobalSettings.Device.DeviceId;
+            c_AndroidBoardName.Text = Bot.GlobalSettings.Device.AndroidBoardName;
+            c_AndroidBootLoader.Text = Bot.GlobalSettings.Device.AndroidBootLoader;
+            c_DeviceBrand.Text = Bot.GlobalSettings.Device.DeviceBrand;
+            c_DeviceModel.Text = Bot.GlobalSettings.Device.DeviceModel;
+            c_DeviceModelIdentifier.Text = Bot.GlobalSettings.Device.DeviceModelIdentifier;
+            c_HardwareManufacturer.Text = Bot.GlobalSettings.Device.HardwareManufacturer;
+            c_HardWareModel.Text = Bot.GlobalSettings.Device.HardWareModel;
+            c_FirmwareBrand.Text = Bot.GlobalSettings.Device.FirmwareBrand;
+            c_FirmwareTags.Text = Bot.GlobalSettings.Device.FirmwareTags;
+            c_FirmwareType.Text = Bot.GlobalSettings.Device.FirmwareType;
+            c_FirmwareFingerprint.Text = Bot.GlobalSettings.Device.FirmwareFingerprint;
         }
 
         private void btn_textProxy_Click(object sender, RoutedEventArgs e)
         {
-            if (!Bot.GlobalSettings.Auth.UseProxy)
+            if (Bot == null || !Bot.GlobalSettings.Auth.UseProxy)
             {
                 MessageBox.Show("Proxy disabled!", "Proxy test", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             try
             {
-                WebClient wc = new WebClient();
-                wc.Proxy = Bot.Session.Proxy;
+                var wc = new WebClient {Proxy = Bot.Session.Proxy};
                 wc.DownloadString("http://google.com/ncr");
                 MessageBox.Show("Proxy works fine!", "Proxy test", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch { MessageBox.Show("Proxy failed!", "Proxy test", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        }
+
+        private void b_GenerateNewAndroid_Click(object sender, RoutedEventArgs e)
+        {
+            if (Bot?.GlobalSettings?.Device == null) return;
+            Bot.GlobalSettings.Device.NewRandomPhone();
+            FillBoxesFromSettings();
+        }
+
+        private void CustomRouteComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Bot?.GlobalSettings?.LocationSettings == null || LoadingUi) return;
+            var cb = sender as ComboBox;
+            var route = cb?.SelectedItem as BotRoute;
+            if (route == null) return;
+            Bot.GlobalSettings.LocationSettings.CustomRouteName = route.Name;
+            Bot.GlobalSettings.LocationSettings.CustomRoute = route.Route;
         }
     }
 }

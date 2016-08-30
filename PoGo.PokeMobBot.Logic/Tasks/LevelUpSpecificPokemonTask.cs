@@ -1,6 +1,8 @@
 ﻿#region using directives
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using PoGo.PokeMobBot.Logic.Event;
 using PoGo.PokeMobBot.Logic.PoGoUtils;
@@ -15,8 +17,13 @@ namespace PoGo.PokeMobBot.Logic.Tasks
 {
     public class LevelUpSpecificPokemonTask
     {
-        public static async Task Execute(ISession session, ulong pokemonId, bool toMax = false)
+        public static async Task Execute(ISession session, ulong pokemonId, CancellationToken cancellationToken, bool toMax = false)
         {
+
+            if (!await CheckBotStateTask.Execute(session, cancellationToken)) return;
+
+            var prevState = session.State;
+            session.State = BotState.LevelPoke;
             var all = await session.Inventory.GetPokemons();
             var pokemon = all.FirstOrDefault(p => p.Id == pokemonId);
             if (pokemon == null) return;
@@ -83,20 +90,22 @@ namespace PoGo.PokeMobBot.Logic.Tasks
                 var pokemonSettings = (await session.Inventory.GetPokemonSettings()).ToList();
                 var setting = pokemonSettings.Single(q => q.PokemonId == pokemon.PokemonId);
                 var family = pokemonFamilies.First(q => q.FamilyId == setting.FamilyId);
-                session.EventDispatcher.Send(new PokemonStatsChangedEvent()
+                session.EventDispatcher.Send(new PokemonStatsChangedEvent
                 {
                     Name = !string.IsNullOrEmpty(pokemon.Nickname)
                         ? pokemon.Nickname
-                        : pokemon.PokemonId.ToString(),
+                        : session.Translation.GetPokemonName(pokemon.PokemonId),
                     Uid = pokemonId,
                     Id = pokemon.PokemonId,
                     Family = family.FamilyId,
                     Candy = family.Candy_,
                     Cp = latestSuccessResponse.UpgradedPokemon.Cp,
+                    MaxCp = (int)PokemonInfo.GetMaxCpAtTrainerLevel(latestSuccessResponse.UpgradedPokemon, session.Runtime.CurrentLevel),
                     Iv = latestSuccessResponse.UpgradedPokemon.CalculatePokemonPerfection(),
                     Favourite = pokemon.Favorite == 1
                 });
             }
+            session.State = prevState;
         }
     }
 }
